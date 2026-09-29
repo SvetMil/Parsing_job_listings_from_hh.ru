@@ -1,0 +1,39 @@
+name: HH Vacancy Parser
+
+# Разрешаем запуск скрипта через внешние запросы API (от нашей Google Кнопки)
+on:
+  repository_dispatch:
+    types: [trigger-parser]
+  workflow_dispatch: # Позволяет также запускать вручную кнопкой прямо из интерфейса GitHub
+
+jobs:
+  run-parser:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Проверка кода репозитория
+      uses: actions/checkout@v4
+
+    - name: Установка Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.11'
+
+    - name: Установка зависимостей
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+
+    - name: Установка скрытого браузера Playwright
+      run: npx playwright install chromium --with-deps
+
+    - name: Запуск парсера вакансий
+      run: python parser.py
+
+    - name: Сохранение базы данных вакансий
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: seen-vacancies-db
+        path: seen_vacancies.txt
+        retention-days: 90
