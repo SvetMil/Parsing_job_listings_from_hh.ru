@@ -1,3 +1,6 @@
+import os
+import sys
+import json
 import time
 import requests
 from playwright.sync_api import sync_playwright
@@ -6,23 +9,22 @@ from playwright.sync_api import sync_playwright
 # Ссылка на результаты поиска (настройте фильтры на сайте hh.ru и скопируйте URL сюда)
 SEARCH_URL = "https://krasnoyarsk.hh.ru/search/vacancy?hhtmFromLabel=header&hhtmFrom=resume_profile_front&text=%22%D0%91%D1%83%D1%85%D0%B3%D0%B0%D0%BB%D1%82%D0%B5%D1%80+%D0%BD%D0%B0+%D1%83%D0%B4%D0%B0%D0%BB%D0%B5%D0%BD%D0%BD%D1%8B%D0%B9+%D0%B4%D0%BE%D1%81%D1%82%D1%83%D0%BF%22+OR+%22%D0%9E%D0%BF%D0%B5%D1%80%D0%B0%D1%82%D0%BE%D1%80+%D0%9F%D0%9A+%281%D0%A1%2C+%D0%AD%D0%94%D0%9E%29%22+OR+%22%D0%A1%D0%BF%D0%B5%D1%86%D0%B8%D0%B0%D0%BB%D0%B8%D1%81%D1%82+%D0%BF%D0%BE+%D1%80%D0%B0%D0%B1%D0%BE%D1%82%D0%B5+%D1%81+%D1%81%D0%B8%D1%81%D1%82%D0%B5%D0%BC%D0%B0%D0%BC%D0%B8+%D0%AD%D0%94%D0%9E+%D0%B8+%D0%9C%D0%B5%D1%80%D0%BA%D1%83%D1%80%D0%B8%D0%B9%22+OR+%22%D0%A1%D0%BF%D0%B5%D1%86%D0%B8%D0%B0%D0%BB%D0%B8%D1%81%D1%82+1%D0%A1%22&area=113&search_field=name&search_field=company_name&search_field=description&work_format=REMOTE&enable_snippets=true" 
 
-# Измените эти строки в parser.py:
-import os
-import sys
-import json
-
-# Скрипт будет брать токены из входных данных от Google Кнопки
+# === БЕЗОПАСНЫЙ ПЕРЕХВАТ ТОКЕНОВ ОТ GOOGLE КНОПКИ ===
 try:
-    github_event = json.loads(os.getenv("GITHUB_EVENT_PAYLOAD", "{}"))
-    TELEGRAM_TOKEN = github_event["client_payload"]["tg_token"]
-    TELEGRAM_CHAT_ID = github_event["client_payload"]["tg_chat_id"]
-except:
-    # Оставляем пустыми, если запуск не через кнопку
-    TELEGRAM_TOKEN = "********" 
-    TELEGRAM_CHAT_ID = "********"
-# =================
+    # GitHub Actions сохраняет payload запроса в специальный файл, путь к которому лежит в переменной GITHUB_EVENT_PATH
+    event_path = os.getenv("GITHUB_EVENT_PATH")
+    if event_path and os.path.exists(event_path):
+        with open(event_path, "r", encoding="utf-8") as f:
+            event_data = json.load(f)
+        TELEGRAM_TOKEN = event_data["client_payload"]["tg_token"]
+        TELEGRAM_CHAT_ID = event_data["client_payload"]["tg_chat_id"]
+    else:
+        raise ValueError("Скрипт запущен не через API")
+except Exception as e:
+    print(f"Предупреждение: Не удалось загрузить токены из Google ({e}). Скрипт остановлен.")
+    sys.exit(0)
+# ===================================================
 
-# Файл, где будут храниться ID вакансий, чтобы не присылать их повторно
 DB_FILE = "seen_vacancies.txt"
 
 def load_seen_vacancies():
@@ -49,9 +51,7 @@ def parse_hh():
     seen_vacancies = load_seen_vacancies()
     
     with sync_playwright() as p:
-        # headless=True уберет всплывающее окно браузера, скрипт будет работать незаметно в консоли
         browser = p.chromium.launch(headless=True) 
-        
         context = browser.new_context(
             user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
             viewport={"width": 1280, "height": 800},
@@ -59,11 +59,10 @@ def parse_hh():
         )
         page = context.new_page()
         
-        print(f"Переход по ссылке...")
+        print("Переход по ссылке...")
         page.goto(SEARCH_URL, wait_until="networkidle")
         
         links_elements = page.locator('a[href*="/vacancy/"]').all()
-        
         new_count = 0
         valid_vacancies = {}
         
@@ -71,13 +70,9 @@ def parse_hh():
             try:
                 href = el.get_attribute("href")
                 title = el.inner_text().strip()
-                
                 if href and title and len(title) > 5:
-                    # Корректно извлекаем ID вакансии, отсекая все параметры после знака ?
                     clean_href = href.split("?")[0]
-                    # Извлекаем только цифры ID из структуры ссылки
                     v_id = clean_href.split("/vacancy/")[-1].replace("/", "").strip()
-                    
                     if v_id.isdigit(): 
                         valid_vacancies[v_id] = {"title": title}
             except:
@@ -88,24 +83,17 @@ def parse_hh():
         for v_id, info in valid_vacancies.items():
             if v_id not in seen_vacancies:
                 new_count += 1
-                # ИСПРАВЛЕНО: Добавлен обязательный слэш (/) между доменом и ID вакансии
-                clean_url = f"https://krasnoyarsk.hh.ru/vacancy/{v_id}"
-                
+                clean_url = f"https://hh.ru/vacancy/{v_id}"
                 message = f"🌟 *Новая вакансия!*\n\n📌 *{info['title']}*\n🔗 [Открыть на HH]({clean_url})"
                 
                 print(f"Отправка в ТГ: {info['title']}")
                 send_telegram(message)
-                
-                # Сохраняем строго очищенный ID в базу данных
                 save_vacancy(v_id)
-                # Добавляем в локальное множество текущей сессии, чтобы не дублировать
                 seen_vacancies.add(v_id) 
-                
                 time.sleep(1.5)
                 
         if new_count == 0:
-            print("Новых вакансий нет или все они уже были обработаны.")
-            
+            print("Новых вакансий нет.")
         browser.close()
 
 if __name__ == "__main__":
