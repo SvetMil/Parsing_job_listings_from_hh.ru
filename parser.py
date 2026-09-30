@@ -90,23 +90,30 @@ def parse_hh():
         page = context.new_page()
         page.add_init_script("delete navigator.__proto__.webdriver;")
         
-        print("Подключение к HeadHunter...")
+                print("Подключение к HeadHunter...")
         page.goto(SEARCH_URL, wait_until="load", timeout=60000)
         page.wait_for_timeout(5000)
         
-        vacancy_cards = page.locator('[data-qa="vacancy-serp__vacancy-title"]').all()
+        print("Сбор вакансий со страницы...")
         new_count = 0
         valid_vacancies = {}
         
-        for card in vacancy_cards:
+        # Находим заголовки вакансий по новому актуальному селектору hh.ru
+        vacancy_titles = page.locator('h2[data-qa="bloko-header-2"], h3[data-qa="bloko-header-3"]').all()
+        
+        for title_element in vacancy_titles:
             try:
-                href = card.get_attribute("href")
-                title = card.inner_text().strip()
-                if href and title:
-                    clean_href = href.split("?")[0]
-                    v_id = ''.join(filter(str.isdigit, clean_href))
-                    if v_id:
-                        valid_vacancies[v_id] = {"title": title, "url": clean_href}
+                # Внутри заголовка ищем ссылку на вакансию
+                link_element = title_element.locator('a[href*="/vacancy/"]').first
+                if link_element.count() > 0:
+                    href = link_element.get_attribute("href")
+                    title = link_element.inner_text().strip()
+                    
+                    if href and title:
+                        clean_href = href.split("?")[0]
+                        v_id = ''.join(filter(str.isdigit, clean_href))
+                        if v_id:
+                            valid_vacancies[v_id] = {"title": title, "url": clean_href}
             except:
                 continue
 
