@@ -94,46 +94,43 @@ def parse_hh():
         page.goto(SEARCH_URL, wait_until="load", timeout=60000)
         page.wait_for_timeout(5000)
         
-        print("Сбор вакансий со страницы...")
+        # ИСПРАВЛЕНО: Возвращаем самый надежный сбор ссылок по тегу /vacancy/
+        links_elements = page.locator('a[href*="/vacancy/"]').all()
         new_count = 0
         valid_vacancies = {}
         
-        # Находим заголовки вакансий по новому актуальному селектору hh.ru
-        vacancy_titles = page.locator('h2[data-qa="bloko-header-2"], h3[data-qa="bloko-header-3"]').all()
-        
-        for title_element in vacancy_titles:
+        for el in links_elements:
             try:
-                # Внутри заголовка ищем ссылку на вакансию
-                link_element = title_element.locator('a[href*="/vacancy/"]').first
-                if link_element.count() > 0:
-                    href = link_element.get_attribute("href")
-                    title = link_element.inner_text().strip()
+                href = el.get_attribute("href")
+                title = el.inner_text().strip()
+                
+                if href and title and len(title) > 5:
+                    # ИСПРАВЛЕНО: Четкое и безопасное извлечение ID вакансии без мусора из URL
+                    clean_href = href.split("?")[0]
+                    v_id = clean_href.split("/vacancy/")[-1].replace("/", "").strip()
                     
-                    if href and title:
-                        clean_href = href.split("?")[0]
-                        v_id = ''.join(filter(str.isdigit, clean_href))
-                        if v_id:
-                            valid_vacancies[v_id] = {"title": title, "url": clean_href}
+                    if v_id.isdigit(): 
+                        valid_vacancies[v_id] = {"title": title, "url": clean_href}
             except:
                 continue
 
         print(f"Успешно распознано вакансий на странице: {len(valid_vacancies)}")
-
+        
         for v_id, info in valid_vacancies.items():
             if v_id not in seen_vacancies:
                 new_count += 1
                 message = f"🌟 *Новая вакансия!*\n\n📌 {info['title']}\n🔗 Ссылка: {info['url']}"
                 
                 print(f"Отправка уведомлений: {info['title']}")
-                send_telegram(message)
-                send_vk(message)
+                send_telegram(message) # Шлем в ТГ
+                send_vk(message)       # Шлем в VK
                 
                 save_vacancy(v_id)
-                seen_vacancies.add(v_id)
+                seen_vacancies.add(v_id) 
                 time.sleep(2.0)
                 
         if new_count == 0:
-            print("Новых вакансий нет. Все вакансии уже сохранены в seen_vacancies.txt.")
+            print("Новых вакансий нет. Все вакансии уже обработаны.")
         browser.close()
 
 if __name__ == "__main__":
