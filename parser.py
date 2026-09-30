@@ -111,7 +111,9 @@ def parse_hh():
                 continue
 
         print(f"Успешно распознано вакансий на странице: {len(valid_vacancies)}")
-        
+
+        valid_vacancies["TEST_12345"] = {"title": "🔥 ТЕСТОВАЯ ВАКАНСИЯ: Проверка связи с VK и Telegram!", "url": ["https://hh.ru"]}
+
         for v_id, info in valid_vacancies.items():
             if v_id not in seen_vacancies:
                 new_count += 1
