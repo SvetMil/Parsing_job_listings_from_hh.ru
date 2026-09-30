@@ -1,10 +1,12 @@
 name: HH Vacancy Parser
 
-# Разрешаем запуск скрипта через внешние запросы API (от нашей Google Кнопки)
 on:
   repository_dispatch:
     types: [trigger-parser]
-  workflow_dispatch: # Позволяет также запускать вручную кнопкой прямо из интерфейса GitHub
+  workflow_dispatch:
+  schedule:
+    # Запуск каждые 3 часа по всемирному времени UTC (в 03:00, 06:00, 09:00 и т.д.)
+    - cron: '0 */3 * * *'
 
 jobs:
   run-parser:
@@ -28,6 +30,12 @@ jobs:
       run: playwright install chromium
 
     - name: Запуск парсера вакансий
+      # Прокидываем все скрытые переменные безопасности внутрь Ubuntu-контейнера
+      env:
+        TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
+        TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        VK_TOKEN: ${{ secrets.VK_TOKEN }}
+        VK_USER_ID: ${{ secrets.VK_USER_ID }}
       run: python parser.py
 
     - name: Сохранение базы данных вакансий
