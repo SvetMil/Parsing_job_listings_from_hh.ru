@@ -6,7 +6,7 @@ import requests
 from playwright.sync_api import sync_playwright
 
 # Фильтры поиска вакансий (Красноярск, Бухгалтер, Удаленка)
-SEARCH_URL = "https://krasnoyarsk.hh.ru/search/vacancy?hhtmFromLabel=header&hhtmFrom=resume_profile_front&text=%22%D0%91%D1%83%D1%85%D0%B3%D0%B0%D0%BB%D1%82%D0%B5%D1%80+%D0%BD%D0%B0+%D1%83%D0%B4%D0%B0%D0%BB%D0%B5%D0%BD%D0%BD%D1%8B%D0%B9+%D0%B4%D0%BE%D1%81%D1%82%D1%83%D0%BF%22+OR+%22%D0%9E%D0%BF%D0%B5%D1%80%D0%B0%D1%82%D0%BE%D1%80+%D0%9F%D0%9A+%281%D0%A1%2C+%D0%AD%D0%94%D0%9E%29%22+OR+%22%D0%A1%D0%BF%D0%B5%D1%86%D0%B8%D0%B0%D0%BB%D0%B8%D1%81%D1%82+%D0%BF%D0%BE+%D1%80%D0%B0%D0%B1%D0%BE%D1%82%D0%B5+%D1%81+%D1%81%D0%B8%D1%81%D1%82%D0%B5%D0%BC%D0%B0%D0%BC%D0%B8+%D0%AD%D0%94%D0%9E+%D0%B8+%D0%9C%D0%B5%D1%80%D0%BA%D1%83%D1%80%D0%B8%D0%B9%22+OR+%22%D0%A1%D0%BF%D0%B5%D1%86%D0%B8%D0%B0%D0%BB%D0%B8%D1%81%D1%82+1%D0%A1%22&area=113&search_field=name&search_field=company_name&search_field=description&work_format=REMOTE&enable_snippets=true" 
+SEARCH_URL = ""
 
 # === НАДЕЖНЫЙ СБОР ТОКЕНОВ ИЗ ВСЕХ ИСТОЧНИКОВ ===
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
@@ -14,22 +14,31 @@ TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
 VK_TOKEN = os.getenv("VK_TOKEN")
 VK_USER_ID = os.getenv("VK_USER_ID")
 
-# Если запуск ручной через Google-кнопку, извлекаем данные из payload
+# Извлекаем данные, которые прислала наша синяя Google-кнопка
 event_path = os.getenv("GITHUB_EVENT_PATH")
 if event_path and os.path.exists(event_path):
     try:
         with open(event_path, "r", encoding="utf-8") as f:
             event_data = json.load(f)
         
-        # Исправлено на основе лога диагностики: берем client_payload прямо с верхнего уровня
         payload = event_data.get("client_payload", {})
         if payload.get("tg_token"):
             TELEGRAM_TOKEN = payload.get("tg_token")
             TELEGRAM_CHAT_ID = payload.get("tg_chat_id")
+            
+        # КРИТИЧЕСКОЕ ИСПРАВЛЕНИЕ: Перезаписываем SEARCH_URL строго той ссылкой, которая пришла из ячейки B1
+        if payload.get("search_url"):
+            SEARCH_URL = payload.get("search_url")
+            print(f"🔥 Успех! Робот переключился на динамическую ссылку из Google Таблицы.")
+            
     except Exception as e:
-        print(f"Запуск без payload (используются Secrets): {e}")
+        print(f"Запуск по расписанию (используются Secrets): {e}")
 
-# Финальная проверка авторизации
+# Защитная проверка: если и из таблицы ничего не пришло, и в Secrets пусто — ставим базовую заглушку на Бухгалтеров
+if not SEARCH_URL:
+    SEARCH_URL = "https://hh.ru"
+
+# Финальная проверка авторизации мессенджеров
 if not TELEGRAM_TOKEN or not TELEGRAM_CHAT_ID:
     print("⛔️ Критическая ошибка: Авторизация Telegram отсутствует. Скрипт остановлен.")
     sys.exit(0)
