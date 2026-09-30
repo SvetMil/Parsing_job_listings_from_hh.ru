@@ -90,7 +90,7 @@ def parse_hh():
         page = context.new_page()
         page.add_init_script("delete navigator.__proto__.webdriver;")
         
-                print("Подключение к HeadHunter...")
+        print("Подключение к HeadHunter...")
         page.goto(SEARCH_URL, wait_until="load", timeout=60000)
         page.wait_for_timeout(5000)
         
