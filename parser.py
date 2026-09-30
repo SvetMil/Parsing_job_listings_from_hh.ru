@@ -20,6 +20,8 @@ if event_path and os.path.exists(event_path):
     try:
         with open(event_path, "r", encoding="utf-8") as f:
             event_data = json.load(f)
+        
+        # Исправлено на основе лога диагностики: берем client_payload прямо с верхнего уровня
         payload = event_data.get("client_payload", {})
         if payload.get("tg_token"):
             TELEGRAM_TOKEN = payload.get("tg_token")
@@ -27,33 +29,36 @@ if event_path and os.path.exists(event_path):
     except Exception as e:
         print(f"Запуск без payload (используются Secrets): {e}")
 
+# Финальная проверка авторизации
+if not TELEGRAM_TOKEN or not TELEGRAM_CHAT_ID:
+    print("⛔️ Критическая ошибка: Авторизация Telegram отсутствует. Скрипт остановлен.")
+    sys.exit(0)
+
 DB_FILE = "seen_vacancies.txt"
 
 def load_seen_vacancies():
     try:
-        with open(DB_FILE, "r") as f:
+        with open(DB_FILE, "r", encoding="utf-8") as f:
             return set(f.read().splitlines())
     except FileNotFoundError:
         return set()
 
 def save_vacancy(v_id):
-    with open(DB_FILE, "a") as f:
+    with open(DB_FILE, "a", encoding="utf-8") as f:
         f.write(f"{v_id}\n")
 
 def send_telegram(text):
-    if not TELEGRAM_TOKEN or not TELEGRAM_CHAT_ID:
-        return
     url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
     payload = {"chat_id": TELEGRAM_CHAT_ID, "text": text, "parse_mode": "Markdown"}
     try:
-        requests.post(url, json=payload)
+        requests.post(url, json=payload, timeout=10)
     except Exception as e:
         print(f"Ошибка Telegram: {e}")
 
 def send_vk(text):
     if not VK_TOKEN or not VK_USER_ID:
+        print("Внимание: Токены VK отсутствуют в Secrets репозитория. Сообщение в VK пропущено.")
         return
-    # Очищаем текст от Markdown-разметки звезд, так как VK её не поддерживает
     clean_text = text.replace("*", "")
     url = "https://api.vk.com/method/messages.send"
     payload = {
@@ -64,7 +69,7 @@ def send_vk(text):
         "v": "5.131"
     }
     try:
-        res = requests.post(url, data=payload).json()
+        res = requests.post(url, data=payload, timeout=10).json()
         if "error" in res:
             print(f"Ошибка VK API: {res['error']['error_msg']}")
     except Exception as e:
@@ -105,23 +110,23 @@ def parse_hh():
             except:
                 continue
 
-        print(f"Успешно распознано вакансий: {len(valid_vacancies)}")
+        print(f"Успешно распознано вакансий на странице: {len(valid_vacancies)}")
         
         for v_id, info in valid_vacancies.items():
             if v_id not in seen_vacancies:
                 new_count += 1
-                message = f"🌟 Новая вакансия!\n\n📌 {info['title']}\n🔗 Ссылка: {info['url']}"
+                message = f"🌟 *Новая вакансия!*\n\n📌 {info['title']}\n🔗 Ссылка: {info['url']}"
                 
                 print(f"Отправка уведомлений: {info['title']}")
-                send_telegram(message) # Шлем в ТГ
-                send_vk(message)       # Шлем в VK
+                send_telegram(message)
+                send_vk(message)
                 
                 save_vacancy(v_id)
-                seen_vacancies.add(v_id) 
+                seen_vacancies.add(v_id)
                 time.sleep(2.0)
                 
         if new_count == 0:
-            print("Новых вакансий нет.")
+            print("Новых вакансий нет. Все вакансии уже сохранены в seen_vacancies.txt.")
         browser.close()
 
 if __name__ == "__main__":
