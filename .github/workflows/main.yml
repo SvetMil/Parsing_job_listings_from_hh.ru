@@ -5,12 +5,15 @@ on:
     types: [trigger-parser]
   workflow_dispatch:
   schedule:
-    # Запуск каждые 3 часа по всемирному времени UTC (в 03:00, 06:00, 09:00 и т.д.)
     - cron: '0 */3 * * *'
 
 jobs:
   run-parser:
     runs-on: ubuntu-latest
+
+    # Даем серверу официальное право записывать файлы обратно в репозиторий
+    permissions:
+      contents: write
 
     steps:
     - name: Проверка кода репозитория
@@ -30,7 +33,6 @@ jobs:
       run: playwright install chromium
 
     - name: Запуск парсера вакансий
-      # Прокидываем все скрытые переменные безопасности внутрь Ubuntu-контейнера
       env:
         TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
         TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
@@ -38,10 +40,10 @@ jobs:
         VK_USER_ID: ${{ secrets.VK_USER_ID }}
       run: python parser.py
 
-    - name: Сохранение базы данных вакансий
-      if: always()
-      uses: actions/upload-artifact@v4
-      with:
-        name: seen-vacancies-db
-        path: seen_vacancies.txt
-        retention-days: 90
+    - name: Автоматическое сохранение базы данных вакансий на GitHub
+      run: |
+        git config --global user.name "github-actions[bot]"
+        git config --global user.email "github-actions[bot]@://github.com"
+        git add seen_vacancies.txt
+        # Коммитим файл только если внутри появились новые записи, чтобы избежать пустых ошибок
+        git diff --quiet && git diff --staged --quiet || (git commit -m "Автообновление базы вакансий: seen_vacancies.txt" && git push)
