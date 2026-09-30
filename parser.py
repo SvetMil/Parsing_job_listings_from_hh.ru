@@ -115,22 +115,30 @@ def parse_hh():
                 continue
 
         print(f"Успешно распознано вакансий на странице: {len(valid_vacancies)}")
+
+        # Создаем уникальный текстовый ключ на основе текущей ссылки, чтобы разделять разные поиски
+        import hashlib
+        search_key = hashlib.md5(SEARCH_URL.encode('utf-8')).hexdigest()[:8]
         
         for v_id, info in valid_vacancies.items():
-            if v_id not in seen_vacancies:
+            # Теперь проверяем уникальную связку "ID вакансии + Ключ поиска"
+            memory_key = f"{v_id}_{search_key}"
+            
+            if memory_key not in seen_vacancies:
                 new_count += 1
                 message = f"🌟 *Новая вакансия!*\n\n📌 {info['title']}\n🔗 Ссылка: {info['url']}"
                 
                 print(f"Отправка уведомлений: {info['title']}")
-                send_telegram(message) # Шлем в ТГ
-                send_vk(message)       # Шлем в VK
+                send_telegram(message)
+                send_vk(message)
                 
-                save_vacancy(v_id)
-                seen_vacancies.add(v_id) 
+                # Сохраняем в файл уникальную связку, а не просто голый ID
+                save_vacancy(memory_key)
+                seen_vacancies.add(memory_key) 
                 time.sleep(2.0)
                 
         if new_count == 0:
-            print("Новых вакансий нет. Все вакансии уже обработаны.")
+            print("По этой ссылке новых вакансий не обнаружено. Все они уже есть в памяти.")
         browser.close()
 
 if __name__ == "__main__":
