@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8">
+    <!-- Критически важная строка для масштаба на смартфонах -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Парсер Вакансий</title>
+    <style>
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        min-height: 100vh;
+        margin: 0;
+        background-color: #f4f6f9;
+        padding: 16px; /* Отступы, чтобы карточка не липла к краям экрана */
+      }
+      .card {
+        background: white;
+        padding: 32px 24px;
+        border-radius: 20px;
+        box-shadow: 0 8px 24px rgba(0,0,0,0.06);
+        text-align: center;
+        width: 100%;
+        max-width: 400px; /* Идеальная максимальная ширина на ПК и смартфонах */
+      }
+      h2 { 
+        margin-top: 0; 
+        color: #2c3e50; 
+        font-size: 24px;
+        font-weight: 700;
+        margin-bottom: 8px;
+      }
+      p {
+        color: #666; 
+        font-size: 15px; 
+        margin-bottom: 32px;
+        line-height: 1.4;
+      }
+      .btn {
+        background-color: #007bff;
+        color: white;
+        border: none;
+        padding: 18px 20px; /* Сделали кнопку выше и удобнее для нажатия пальцем */
+        font-size: 18px;
+        font-weight: bold;
+        border-radius: 12px;
+        cursor: pointer;
+        width: 100%;
+        transition: background 0.2s, transform 0.1s;
+        box-shadow: 0 4px 12px rgba(0,123,255,0.2);
+        -webkit-tap-highlight-color: transparent; /* Убираем синюю вспышку при нажатии на iOS */
+      }
+      .btn:active {
+        transform: scale(0.98);
+        background-color: #0056b3;
+      }
+      .btn:disabled {
+        background-color: #6c757d;
+        box-shadow: none;
+        cursor: not-allowed;
+      }
+      #status { 
+        margin-top: 24px; 
+        font-size: 15px; 
+        font-weight: 600; 
+        line-height: 1.5;
+        padding: 0 8px;
+      }
+    </style>
+  </head>
+  <body>
+
+    <div class="card">
+      <h2>HH.ru Парсер</h2>
+      <p>Нажмите кнопку для поиска новых вакансий в облаке</p>
+      <button class="btn" id="runBtn" onclick="startParsing()">Запустить поиск</button>
+      <div id="status"></div>
+    </div>
+
+    <script>
+      function startParsing() {
+        const btn = document.getElementById('runBtn');
+        const statusDiv = document.getElementById('status');
+        
+        btn.disabled = true;
+        statusDiv.style.color = '#555';
+        statusDiv.innerText = '⏳ Отправка команды на GitHub...';
+        
+        google.script.run
+          .withSuccessHandler(function(result) {
+            statusDiv.innerText = result;
+            statusDiv.style.color = result.includes('успешно') ? '#28a745' : '#dc3545';
+            btn.disabled = false;
+          })
+          .withFailureHandler(function(error) {
+            statusDiv.style.color = '#dc3545';
+            statusDiv.innerText = '❌ Критическая ошибка: ' + error.message;
+            btn.disabled = false;
+          })
+          .triggerGitHubWorkflow();
+      }
+    </script>
+  </body>
+</html>
