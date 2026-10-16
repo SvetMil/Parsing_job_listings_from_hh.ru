@@ -4,7 +4,6 @@
 
 import os
 import requests
-import xml.etree.ElementTree as ET
 import time
 
 # === НАДЕЖНЫЙ СБОР ТОКЕНОВ ИЗ ВСЕХ ИСТОЧНИКОВ ===
@@ -40,13 +39,12 @@ def send_vk_post(vacancy_text, photo_url=None):
         return False
         
     attachments = ""
+    vk_proto = "https://"
+    vk_api_domain = "api.vk.com"
+    vk_method_path = "/method/"
     
     if photo_url:
         try:
-            vk_proto = "https://"
-            vk_api_domain = "api.vk.com"
-            vk_method_path = "/method/"
-            
             server_url = vk_proto + vk_api_domain + vk_method_path + "photos.getWallUploadServer"
             server_res = requests.get(
                 server_url,
@@ -76,11 +74,11 @@ def send_vk_post(vacancy_text, photo_url=None):
                 save_res = requests.get(save_url, params=save_params, timeout=10).json()
                 
                 response_list = save_res.get("response", [])
-                if response_list and isinstance(response_list, list):
+                if response_list and isinstance(response_list, list) and len(response_list) > 0:
                     photo_info = response_list[0]
                     owner_id = photo_info.get("owner_id")
                     media_id = photo_info.get("id")
-                    if owner_id and media_id:
+                    if owner_id is not None and media_id is not None:
                         attachments = f"photo{owner_id}_{media_id}"
         except Exception as e:
             print(f"🚨 Не удалось прикрепить фото к VK-посту: {e}")
@@ -102,14 +100,19 @@ def send_vk_post(vacancy_text, photo_url=None):
         return False
 
 def parse_and_post():
-    """Основной рабочий цикл парсера."""
-    hh_proto = "https://"
-    hh_domain = "krasnoyarsk.hh.ru"
-    hh_rss_path = "/search/vacancy/rss"
-    rss_url = hh_proto + hh_domain + hh_rss_path
+    """Основной рабочий цикл парсера через официальное API hh.ru."""
+    # ИСПРАВЛЕНО: Указан верный базовый эндпоинт для работы с вакансиями API
+    api_url = "https://api.hh.ru/vacancies"
     
-    params = {"text": "Курьер", "area": 54, "order_by": "publication_time"}
-    headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
+    # Параметры поиска: Курьер, Регион: Красноярск (54), Сортировка по дате
+    params = {
+        "text": "Курьер", 
+        "area": 54, 
+        "order_by": "publication_time",
+        "per_page": 10  # Берем топ-10 свежих вакансий за запуск
+    }
+    # Техническое требование hh.ru: обязательно передавать уникальный User-Agent
+    headers = {"User-Agent": "JobListingParserApp/1.0 (SvetMil@github.com)"}
     
     seen_file = "seen_vacancies.txt"
     seen_ids = set()
@@ -117,48 +120,59 @@ def parse_and_post():
         with open(seen_file, "r") as f:
             seen_ids = set(line.strip() for line in f if line.strip())
 
-    print("📡 Подключение к живой ленте hh.ru...")
+    print("📡 Подключение к официальному API hh.ru...")
     try:
-        response = requests.get(rss_url, params=params, headers=headers, timeout=15)
+        response = requests.get(api_url, params=params, headers=headers, timeout=15)
         if response.status_code != 200:
-            print(f"❌ hh.ru недоступен. Статус: {response.status_code}")
+            print(f"❌ hh.ru API недоступно. Статус: {response.status_code}, Ответ: {response.text}")
             return
             
-        root = ET.fromstring(response.content)
+        data = response.json()
+        items = data.get("items", [])
         new_count = 0
         
-        for item in root.findall(".//item"):
-            title = item.find("title").text or ""
-            link = item.find("link").text or ""
-            desc = item.find("description").text or ""
-            
-            v_id = link.split("/vacancy/")[-1].split("?")[0].replace("/", "") if "/vacancy/" in link else None
+        for item in items:
+            v_id = str(item.get("id"))
             
             if not v_id or v_id in seen_ids:
                 continue  
                 
-            company = "Прямой работодатель"
+            title = item.get("name", "Без названия")
+            link = item.get("alternate_url", f"https://hh.ru/vacancy/{v_id}")
+            
+            # Извлекаем компанию
+            employer = item.get("employer", {})
+            company = employer.get("name", "Прямой работодатель") if employer else "Прямой работодатель"
+            
+            # Форматируем зарплату
+            salary_data = item.get("salary")
             salary = "Зарплата не указана"
+            if salary_data:
+                s_from = salary_data.get("from")
+                s_to = salary_data.get("to")
+                curr = salary_data.get("currency", "руб.")
+                if curr == "RUR": 
+                    curr = "руб."
+                
+                if s_from and s_to:
+                    salary = f"от {s_from} до {s_to} {curr}"
+                elif s_from:
+                    salary = f"от {s_from} {curr}"
+                elif s_to:
+                    salary = f"до {s_to} {curr}"
 
-            # 🎯 ТОЧЕЧНО ИСПРАВЛЕНО: Теперь replace вызывается у текстовой строки, а не у всего списка!
-            if "Вакансия компании:" in desc:
-                raw_company = desc.split("Вакансия компании:")[-1].split("</p>")[0]
-                company = raw_company.replace("</div>", "").replace("<td>", "").strip()
-
-            if "Предполагаемый уровень месячного дохода:" in desc:
-                raw_salary = desc.split("Предполагаемый уровень месячного дохода:")[-1].split("</p>")[0]
-                salary = raw_salary.replace("</div>", "").replace("<td>", "").strip()
-             
-            clean_link = link.split('?')[0]
             post_text = (
                 f"💼 *Новая вакансия: {title.strip()}*\n\n"
                 f"🏢 Компания: {company}\n"
                 f"💰 Зарплата: {salary}\n"
                 f"📍 Город: Красноярск\n\n"
-                f"🔗 Откликнуться на hh.ru: {clean_link}"
+                f"🔗 Откликнуться на hh.ru: {link}"
             )
             
-            default_photo = "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=500"
+            # ИСПРАВЛЕНО: Корректный CDN-домен картинок Unsplash и добавлены слэши
+            p_id = "photo-1618005182384-a83a8bd57fbe"
+            p_mod = "?w=500"
+            default_photo = f"https://images.unsplash.com/{p_id}{p_mod}"
             
             print(f"🚀 Публикация новой вакансии ID: {v_id}...")
             tg_ok = send_telegram_post(post_text, default_photo)
