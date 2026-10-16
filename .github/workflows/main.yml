@@ -38,9 +38,12 @@ jobs:
 
     - name: Автоматическое сохранение базы данных вакансий
       run: |
-        git config --global user.name "Automated Parser"
-        git config --global user.email "actions@github.com"
+        git config --global user.name "github-actions[bot]"
+        git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
+        
+        # Гарантируем наличие файла, чтобы git add не упал с ошибкой
+        touch seen_vacancies.txt
+        
         git add seen_vacancies.txt
         git commit -m "🤖 Обновление лога отправленных вакансий [skip ci]" || exit 0
-        git push https://${{ secrets.GITHUB_TOKEN }}@://github.com${{ github.repository }}.git HEAD:${{ github.ref }}
-
+        git push origin HEAD:${{ github.ref }}
